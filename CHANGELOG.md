@@ -3,6 +3,9 @@
 The newest version comes first. The release workflow copies the section of the
 version it publishes into the release notes, which the app shows in its update dialog.
 
+## 0.3.1
+GlobalExam sign-in: the GlobalExam browser looks like a plain browser, the keyboard types into the page you see, sign-in pop-ups open, and « Back to Echo » moves to the top so it never hides a button.
+
 ## 0.3.0
 Updates from inside the app: Echo checks for a new version at start and installs it in two taps. Echo can bring its own GlobalExam page reader, so most fixes no longer need a new app.
 

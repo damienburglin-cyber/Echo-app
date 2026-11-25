@@ -16,6 +16,8 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Message;
+import android.webkit.WebResourceRequest;
 import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -45,7 +47,7 @@ import org.json.JSONTokener;
    to GlobalExam yourself. Through the bridge, Echo can open, read and tap that browser, the same tools
    as the Claude desktop app's browser. The bridge only answers pages served as claude.ai artifacts. */
 public class MainActivity extends Activity {
-    static final String VERSION = "0.3.0";
+    static final String VERSION = "0.3.1";
     private static final String ECHO = "https://claude.ai/artifact/6jNZwCbZuZ8bae7NKNu4NX";
     private static final String ARTIFACT_ORIGINS = "https://*.frame.claudeusercontent.com";
     private static final int PICK_FILE = 7;
@@ -69,15 +71,15 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         FrameLayout root = new FrameLayout(this);
         root.setFitsSystemWindows(true);
-        web = newWeb();
-        echo = newWeb();
+        web = newWeb(false);
+        echo = newWeb(true);
         root.addView(web);
         root.addView(echo);
         backToEcho = new Button(this);
         backToEcho.setText("← Back to Echo");
         backToEcho.setAllCaps(false);
         backToEcho.setOnClickListener(v -> showWeb(false));
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.END);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END);
         lp.setMargins(24, 24, 24, 24);
         root.addView(backToEcho, lp);
         backToEcho.setVisibility(View.GONE);
@@ -190,17 +192,34 @@ public class MainActivity extends Activity {
         return out.toString("UTF-8");
     }
 
-    private WebView newWeb() {
+    /* isEcho: the Echo page gets the EchoApp marker; the GlobalExam browser looks like a plain browser
+       (since 0.3.1: GlobalExam's sign-in page may refuse an unknown browser) and may open sign-in pop-ups. */
+    private WebView newWeb(boolean isEcho) {
         WebView w = new WebView(this);
         WebSettings s = w.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " EchoApp/" + VERSION);
+        if (isEcho) s.setUserAgentString(s.getUserAgentString() + " EchoApp/" + VERSION);
+        else { s.setJavaScriptCanOpenWindowsAutomatically(true); s.setSupportMultipleWindows(true); }
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(w, true);
         w.setWebViewClient(new WebViewClient());
         w.setWebChromeClient(new WebChromeClient() {
+            /* A pop-up (for example a sign-in step) opens in the same GlobalExam browser. */
+            @Override
+            public boolean onCreateWindow(WebView view, boolean isDialog, boolean userGesture, Message msg) {
+                if (isEcho) return false;
+                WebView tmp = new WebView(MainActivity.this);
+                tmp.setWebViewClient(new WebViewClient() {
+                    @Override
+                    public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest req) { view.loadUrl(req.getUrl().toString()); return true; }
+                });
+                ((WebView.WebViewTransport) msg.obj).setWebView(tmp);
+                msg.sendToTarget();
+                return true;
+            }
+
             @Override
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> cb, FileChooserParams params) {
                 if (pendingFiles != null) pendingFiles.onReceiveValue(null);
@@ -217,6 +236,8 @@ public class MainActivity extends Activity {
         webShown = show;
         echo.setVisibility(show ? View.INVISIBLE : View.VISIBLE);
         backToEcho.setVisibility(show ? View.VISIBLE : View.GONE);
+        /* The keyboard must type into the page you see. */
+        if (show) { echo.clearFocus(); web.requestFocus(); } else { web.clearFocus(); echo.requestFocus(); }
     }
 
     private void reply(JavaScriptReplyProxy r, JSONObject o) { try { r.postMessage(o.toString()); } catch (Exception ignored) {} }
