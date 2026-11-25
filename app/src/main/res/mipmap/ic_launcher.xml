@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 7 fallback (no adaptive icons): green square with the same E and dot. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_echo_bg" />
+    <item android:drawable="@drawable/ic_echo_fg" />
+</layer-list>

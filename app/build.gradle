@@ -1,0 +1,32 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'fr.echo.app'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'fr.echo.app'
+        minSdk 24
+        targetSdk 34
+        versionCode 4
+        versionName '0.3.0'
+    }
+    signingConfigs {
+        // Fixed debug key, committed on purpose: every build is signed with the same key,
+        // so a new version installs over the old one and keeps the sign-ins (claude.ai, GlobalExam).
+        // Standard public debug passwords: this key protects nothing secret.
+        debug {
+            storeFile rootProject.file('echo-debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+    buildTypes { debug { signingConfig signingConfigs.debug } }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+dependencies {
+    implementation 'androidx.webkit:webkit:1.11.0'
+    implementation 'androidx.core:core:1.13.1'
+}

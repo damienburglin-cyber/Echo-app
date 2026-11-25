@@ -1,0 +1,36 @@
+name: Build and release
+# Builds the APK on every push. When app/build.gradle has a versionName with no release yet,
+# publishes release v<versionName> with the APK; the installed app finds it and offers to update.
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: echo "version=$(grep -oP "versionName '\K[^']+" app/build.gradle)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+      - run: gradle assembleDebug --no-daemon
+      - run: cp app/build/outputs/apk/debug/app-debug.apk "echo-${{ steps.v.outputs.version }}.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: echo-app-apk
+          path: echo-${{ steps.v.outputs.version }}.apk
+      - name: Release if this version is new
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.v.outputs.version }}
+        run: |
+          if gh release view "v$V" >/dev/null 2>&1; then echo "v$V already released"; exit 0; fi
+          awk -v v="## $V" '$0==v{f=1;next} /^## /{f=0} f' CHANGELOG.md > notes.txt
+          gh release create "v$V" "echo-$V.apk" --target "$GITHUB_SHA" --title "Echo $V" --notes-file notes.txt
