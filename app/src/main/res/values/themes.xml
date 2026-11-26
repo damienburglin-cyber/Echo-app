@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Echo's theme: the same as before (Material light, no action bar). -->
+    <style name="EchoTheme" parent="@android:style/Theme.Material.Light.NoActionBar" />
+</resources>

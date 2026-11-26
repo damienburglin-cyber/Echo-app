@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launch screen (Android 12+): Echo hops once and blinks, under the 1 s the system allows. -->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt"
+    android:drawable="@drawable/ic_echo_fg">
+    <target android:name="bot">
+        <aapt:attr name="android:animation">
+            <set android:ordering="sequentially">
+                <objectAnimator android:propertyName="translateY" android:duration="260" android:valueFrom="0" android:valueTo="-9" android:interpolator="@android:interpolator/decelerate_quad" android:startOffset="80" />
+                <objectAnimator android:propertyName="translateY" android:duration="300" android:valueFrom="-9" android:valueTo="0" android:interpolator="@android:interpolator/bounce" />
+            </set>
+        </aapt:attr>
+    </target>
+    <target android:name="eyes">
+        <aapt:attr name="android:animation">
+            <set android:ordering="sequentially">
+                <objectAnimator android:propertyName="scaleY" android:duration="90" android:valueFrom="1" android:valueTo="0.12" android:startOffset="680" />
+                <objectAnimator android:propertyName="scaleY" android:duration="110" android:valueFrom="0.12" android:valueTo="1" />
+            </set>
+        </aapt:attr>
+    </target>
+</animated-vector>

@@ -1,15 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Echo icon: Echo the robot (the first Echo app's mascot), on the sky blue background. 108 dp canvas, robot inside the 66 dp safe zone. Generated from the robot's SVG (100 x 100 units). -->
+<!-- Echo icon 0.4.1, "soft glyph": the Flat glyph's shape, the Soft clay's volume (design canvas "Soft glyph family", board A).
+     108 dp canvas, robot inside the 66 dp safe zone. Groups "bot" and "eyes" are animated by the launch screen (splash_anim). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <group android:translateX="16" android:translateY="20.18" android:scaleX="0.76" android:scaleY="0.76">
-        <path android:strokeColor="#FF7FE3D6" android:strokeAlpha="0.35" android:strokeWidth="2" android:pathData="M35,18 a15,15 0 1,0 30,0 a15,15 0 1,0 -30,0 z" />
-        <path android:strokeColor="#FF7FE3D6" android:strokeAlpha="0.6" android:strokeWidth="2" android:pathData="M39,18 a11,11 0 1,0 22,0 a11,11 0 1,0 -22,0 z" />
-        <path android:strokeColor="#FF7FE3D6" android:strokeWidth="2" android:pathData="M43,18 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0 z" />
-        <path android:fillColor="#FF7FE3D6" android:pathData="M47.4,18 a2.6,2.6 0 1,0 5.2,0 a2.6,2.6 0 1,0 -5.2,0 z" />
-        <path android:fillColor="#FF333C46" android:pathData="M20,26 a8,9 0 1,0 16,0 a8,9 0 1,0 -16,0 z M64,26 a8,9 0 1,0 16,0 a8,9 0 1,0 -16,0 z" />
-        <path android:fillColor="#FFFCFBF8" android:strokeColor="#FFE4E1D8" android:strokeWidth="1.4" android:pathData="M42,30 h16 a24,24 0 0 1 24,24 v8 a24,24 0 0 1 -24,24 h-16 a24,24 0 0 1 -24,-24 v-8 a24,24 0 0 1 24,-24 z" />
-        <path android:fillColor="#FF1E2732" android:pathData="M42,48 h16 a13,13 0 0 1 13,13 v1 a13,13 0 0 1 -13,13 h-16 a13,13 0 0 1 -13,-13 v-1 a13,13 0 0 1 13,-13 z" />
-        <path android:fillColor="#FF7FE3D6" android:pathData="M39.5,55 h0 a4.5,4.5 0 0 1 4.5,4.5 v4 a4.5,4.5 0 0 1 -4.5,4.5 h-0 a4.5,4.5 0 0 1 -4.5,-4.5 v-4 a4.5,4.5 0 0 1 4.5,-4.5 z M60.5,55 h0 a4.5,4.5 0 0 1 4.5,4.5 v4 a4.5,4.5 0 0 1 -4.5,4.5 h-0 a4.5,4.5 0 0 1 -4.5,-4.5 v-4 a4.5,4.5 0 0 1 4.5,-4.5 z" />
+    <group android:name="frame" android:translateX="16" android:translateY="15" android:scaleX="0.76" android:scaleY="0.76">
+        <path android:fillColor="#FF203A52" android:fillAlpha="0.5" android:pathData="M26,92 a24,3.5 0 1,0 48,0 a24,3.5 0 1,0 -48,0 z" />
+        <group android:name="bot" android:pivotX="50" android:pivotY="89">
+        <path android:fillColor="#FFCBD8E6" android:pathData="M50,14 h0 a1.4,1.4 0 0 1 1.4,1.4 v13.2 a1.4,1.4 0 0 1 -1.4,1.4 h-0 a1.4,1.4 0 0 1 -1.4,-1.4 v-13.2 a1.4,1.4 0 0 1 1.4,-1.4 z" />
+        <path android:fillColor="#FF7FE3D6" android:pathData="M45,13 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0 z" />
+        <path android:fillColor="#FFFFFFFF" android:fillAlpha="0.8" android:pathData="M46.8,11.4 a1.6,1.6 0 1,0 3.2,0 a1.6,1.6 0 1,0 -3.2,0 z" />
+        <path android:fillColor="#FFCBD8E6" android:pathData="M19.5,44 h0 a4.5,4.5 0 0 1 4.5,4.5 v11 a4.5,4.5 0 0 1 -4.5,4.5 h-0 a4.5,4.5 0 0 1 -4.5,-4.5 v-11 a4.5,4.5 0 0 1 4.5,-4.5 z M80.5,44 h0 a4.5,4.5 0 0 1 4.5,4.5 v11 a4.5,4.5 0 0 1 -4.5,4.5 h-0 a4.5,4.5 0 0 1 -4.5,-4.5 v-11 a4.5,4.5 0 0 1 4.5,-4.5 z" />
+        <path android:fillColor="#FFB7C7D9" android:pathData="M46,31 h8 a26,26 0 0 1 26,26 v6 a26,26 0 0 1 -26,26 h-8 a26,26 0 0 1 -26,-26 v-6 a26,26 0 0 1 26,-26 z" />
+        <path android:fillColor="#FFF4F7FB" android:pathData="M46,28 h8 a26,26 0 0 1 26,26 v6 a26,26 0 0 1 -26,26 h-8 a26,26 0 0 1 -26,-26 v-6 a26,26 0 0 1 26,-26 z" />
+        <path android:fillColor="#FFFFFFFF" android:fillAlpha="0.9" android:pathData="M25,35 a11,3.5 0 1,0 22,0 a11,3.5 0 1,0 -22,0 z" />
+        <path android:fillColor="#FF1F2D3A" android:pathData="M43,44 h14 a14,14 0 0 1 14,14 v0 a14,14 0 0 1 -14,14 h-14 a14,14 0 0 1 -14,-14 v-0 a14,14 0 0 1 14,-14 z" />
+        <path android:fillColor="#FFFFFFFF" android:fillAlpha="0.12" android:pathData="M33,48 a9,2 0 1,0 18,0 a9,2 0 1,0 -18,0 z" />
+        <group android:name="eyes" android:pivotX="50" android:pivotY="58">
+        <path android:fillColor="#FF7FE3D6" android:pathData="M41,52 h0 a4,4 0 0 1 4,4 v4 a4,4 0 0 1 -4,4 h-0 a4,4 0 0 1 -4,-4 v-4 a4,4 0 0 1 4,-4 z M59,52 h0 a4,4 0 0 1 4,4 v4 a4,4 0 0 1 -4,4 h-0 a4,4 0 0 1 -4,-4 v-4 a4,4 0 0 1 4,-4 z" />
+        </group>
+        </group>
     </group>
 </vector>

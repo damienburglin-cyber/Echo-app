@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+: Echo's launch screen, the soft glyph on sky blue, animated once (hop and blink). -->
+    <style name="EchoTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowSplashScreenBackground">#FF466A8A</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_anim</item>
+        <item name="android:windowSplashScreenAnimationDuration">900</item>
+    </style>
+</resources>

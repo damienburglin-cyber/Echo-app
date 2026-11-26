@@ -3,6 +3,9 @@
 The newest version comes first. The release workflow copies the section of the
 version it publishes into the release notes, which the app shows in its update dialog.
 
+## 0.4.1
+New icon: Echo the robot, redrawn softer and simpler on sky blue, with a matching themed icon. On Android 12 and later, the launch screen shows it and Echo hops once and blinks.
+
 ## 0.4.0
 Voice for the call simulator: Echo can speak with the phone's voices, including European accents (German, Dutch, Italian, Spanish…), and listen to you with the phone's speech recognition. Echo asks once for the microphone. A refused update is offered again when you come back to Echo (at most every 30 minutes).
 
