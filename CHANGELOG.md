@@ -3,6 +3,9 @@
 The newest version comes first. The release workflow copies the section of the
 version it publishes into the release notes, which the app shows in its update dialog.
 
+## 0.3.2
+New app icon: Echo the robot, the mascot of the first Echo, on Echo's blue. Works with themed icons too.
+
 ## 0.3.1
 GlobalExam sign-in: the GlobalExam browser looks like a plain browser, the keyboard types into the page you see, sign-in pop-ups open, and « Back to Echo » moves to the top so it never hides a button.
 
