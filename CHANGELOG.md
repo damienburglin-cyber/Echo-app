@@ -3,6 +3,9 @@
 The newest version comes first. The release workflow copies the section of the
 version it publishes into the release notes, which the app shows in its update dialog.
 
+## 0.4.0
+Voice for the call simulator: Echo can speak with the phone's voices, including European accents (German, Dutch, Italian, Spanish…), and listen to you with the phone's speech recognition. Echo asks once for the microphone. A refused update is offered again when you come back to Echo (at most every 30 minutes).
+
 ## 0.3.2
 New app icon: Echo the robot, the mascot of the first Echo, on Echo's blue. Works with themed icons too.
 

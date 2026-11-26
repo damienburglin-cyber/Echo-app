@@ -1,6 +1,18 @@
 package fr.echo.app;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.pm.PackageManager;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
+import android.speech.tts.Voice;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
 import android.app.AlertDialog;
 import android.os.Build;
 import android.provider.Settings;
@@ -44,10 +56,11 @@ import org.json.JSONTokener;
 /* Echo app (code: github.com/damienburglin-cyber/Echo-app, releases there too).
    Since 0.3 it checks that repo for a newer release at start and offers to install it.
    Echo app 0.2: the Echo artifact (the brain) full screen; behind it, a second browser where you sign in
-   to GlobalExam yourself. Through the bridge, Echo can open, read and tap that browser, the same tools
+   to GlobalExam yourself. App 0.4: the phone's voice (European accents) and speech recognition for Echo. Through the bridge, Echo can open, read and tap that browser, the same tools
    as the Claude desktop app's browser. The bridge only answers pages served as claude.ai artifacts. */
 public class MainActivity extends Activity {
-    static final String VERSION = "0.3.1";
+    /* The real installed version (0.3.2 said 0.3.1 here, so it kept offering itself). */
+    static String VERSION = "0";
     private static final String ECHO = "https://claude.ai/artifact/6jNZwCbZuZ8bae7NKNu4NX";
     private static final String ARTIFACT_ORIGINS = "https://*.frame.claudeusercontent.com";
     private static final int PICK_FILE = 7;
@@ -69,6 +82,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        try { VERSION = getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception ignored) { }
         FrameLayout root = new FrameLayout(this);
         root.setFitsSystemWindows(true);
         web = newWeb(false);
@@ -94,7 +108,166 @@ public class MainActivity extends Activity {
                 (view, message, origin, isMainFrame, reply) -> ui.post(() -> handle(message.getData(), reply)));
         }
         if (state != null) { echo.restoreState(state); } else { echo.loadUrl(ECHO); }
+        lastCheck = SystemClock.elapsedRealtime();
         checkUpdate();
+    }
+
+    /* ---------- Voice (0.4): the phone's own speech synthesis and recognition ----------
+       Echo asks the phone to say a line in a European voice reading English (the accents claude.ai has not),
+       and to listen to Damien's answer. While listening, the app also sends {id, event, text}:
+       event "state" (text "listening") and event "partial" (the words so far). */
+    private static final String[] ACCENTS = { "de-DE", "nl-NL", "it-IT", "es-ES", "fr-FR", "sv-SE", "pl-PL", "pt-PT", "en-GB", "en-US" };
+    private TextToSpeech speech;
+    private boolean speechReady = false;
+    private final ArrayList<Runnable> speechWaiting = new ArrayList<>();
+    private final Map<String, JavaScriptReplyProxy> sayReplies = new HashMap<>();
+    private SpeechRecognizer recognizer;
+    private JavaScriptReplyProxy listenReply;
+    private String listenId, listenLang;
+    private static final int MIC = 9;
+
+    private void withSpeech(Runnable then) {
+        if (speechReady) { then.run(); return; }
+        speechWaiting.add(then);
+        if (speech != null) return;
+        speech = new TextToSpeech(this, status -> ui.post(() -> {
+            speechReady = status == TextToSpeech.SUCCESS;
+            if (speechReady) speech.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                @Override public void onStart(String u) { }
+                @Override public void onDone(String u) { ui.post(() -> sayDone(u, true, null)); }
+                @Override public void onError(String u) { ui.post(() -> sayDone(u, false, "speak_failed")); }
+                @Override public void onStop(String u, boolean interrupted) { ui.post(() -> sayDone(u, true, "stopped")); }
+            });
+            ArrayList<Runnable> w = new ArrayList<>(speechWaiting);
+            speechWaiting.clear();
+            for (Runnable x : w) x.run();
+        }));
+    }
+
+    private void sayDone(String u, boolean ok, String err) {
+        JavaScriptReplyProxy r = sayReplies.remove(u);
+        if (r == null) return;
+        JSONObject o = res(u, ok);
+        if (err != null) put(o, ok ? "note" : "err", err);
+        reply(r, o);
+    }
+
+    private static int voiceScore(Voice v, Locale want) {
+        return (v.getLocale().getCountry().equals(want.getCountry()) ? 2 : 0) + (v.isNetworkConnectionRequired() ? 0 : 1);
+    }
+
+    /* The best installed voice for a language: same country and offline first. */
+    private Voice voiceFor(String tag) {
+        Locale want = Locale.forLanguageTag(tag);
+        Voice best = null;
+        try {
+            for (Voice v : speech.getVoices()) {
+                if (!v.getLocale().getLanguage().equals(want.getLanguage())) continue;
+                if (v.getFeatures() != null && v.getFeatures().contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)) continue;
+                if (best == null || voiceScore(v, want) > voiceScore(best, want)) best = v;
+            }
+        } catch (Exception ignored) { }
+        return best;
+    }
+
+    private void voiceList(String id, JavaScriptReplyProxy r) {
+        withSpeech(() -> {
+            JSONArray list = new JSONArray();
+            if (speechReady) for (String a : ACCENTS) if (voiceFor(a) != null) list.put(a);
+            JSONObject o = res(id, speechReady);
+            put(o, "voices", list);
+            put(o, "listen", SpeechRecognizer.isRecognitionAvailable(this));
+            reply(r, o);
+        });
+    }
+
+    private void say(String id, JSONObject in, JavaScriptReplyProxy r) {
+        final String text = in.optString("text");
+        final String lang = in.optString("lang", "en-GB");
+        final float rate = (float) Math.max(0.6, Math.min(1.4, in.optDouble("rate", 1.0)));
+        withSpeech(() -> {
+            if (!speechReady) { reply(r, put(res(id, false), "err", "no_speech_engine")); return; }
+            Voice v = voiceFor(lang);
+            if (v == null) v = voiceFor("en-GB");
+            if (v != null) speech.setVoice(v); else speech.setLanguage(Locale.UK);
+            speech.setSpeechRate(rate);
+            for (String u : new ArrayList<>(sayReplies.keySet())) sayDone(u, true, "replaced");
+            sayReplies.put(id, r);
+            if (speech.speak(text, TextToSpeech.QUEUE_FLUSH, new Bundle(), id) != TextToSpeech.SUCCESS) sayDone(id, false, "speak_failed");
+        });
+    }
+
+    private void listen(String id, JSONObject in, JavaScriptReplyProxy r) {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) { reply(r, put(res(id, false), "err", "unavailable")); return; }
+        finishListen(false, "replaced", null);
+        listenReply = r; listenId = id; listenLang = in.optString("lang", "en-US");
+        if (speech != null) speech.stop();
+        if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, MIC);
+            return;
+        }
+        startListening();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int req, String[] perms, int[] results) {
+        super.onRequestPermissionsResult(req, perms, results);
+        if (req != MIC) return;
+        if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) startListening();
+        else finishListen(false, "not_granted", null);
+    }
+
+    private void startListening() {
+        if (listenReply == null) return;
+        if (recognizer == null) {
+            recognizer = SpeechRecognizer.createSpeechRecognizer(this);
+            recognizer.setRecognitionListener(new RecognitionListener() {
+                @Override public void onReadyForSpeech(Bundle p) { event("state", "listening"); }
+                @Override public void onBeginningOfSpeech() { }
+                @Override public void onRmsChanged(float v) { }
+                @Override public void onBufferReceived(byte[] b) { }
+                @Override public void onEndOfSpeech() { }
+                @Override public void onError(int e) {
+                    String err = e == SpeechRecognizer.ERROR_NO_MATCH || e == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ? "no_speech"
+                        : e == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ? "not_granted"
+                        : e == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ? "busy" : "failed";
+                    finishListen(false, err, null);
+                }
+                @Override public void onResults(Bundle b) { finishListen(true, null, first(b)); }
+                @Override public void onPartialResults(Bundle b) { String t = first(b); if (t != null && !t.isEmpty()) event("partial", t); }
+                @Override public void onEvent(int t, Bundle b) { }
+            });
+        }
+        Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, listenLang);
+        i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+        /* A learner pauses to find words: wait longer before deciding he has finished (some phones ignore it). */
+        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L);
+        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L);
+        try { recognizer.startListening(i); } catch (Exception e) { finishListen(false, "failed", null); }
+    }
+
+    private static String first(Bundle b) {
+        ArrayList<String> l = b == null ? null : b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+        return l == null || l.isEmpty() ? null : l.get(0);
+    }
+
+    private void event(String name, String text) {
+        if (listenReply == null) return;
+        JSONObject o = new JSONObject();
+        put(o, "id", listenId); put(o, "event", name); put(o, "text", text);
+        reply(listenReply, o);
+    }
+
+    private void finishListen(boolean ok, String err, String text) {
+        if (listenReply == null) return;
+        JSONObject o = res(listenId, ok);
+        if (err != null) put(o, "err", err);
+        put(o, "text", text == null ? "" : text);
+        JavaScriptReplyProxy r = listenReply;
+        listenReply = null; listenId = null;
+        reply(r, o);
     }
 
     /* ---------- Updates: the latest release of the public Echo-app repo ---------- */
@@ -136,7 +309,8 @@ public class MainActivity extends Activity {
     }
 
     private void offerUpdate(String version, String url, String notes) {
-        new AlertDialog.Builder(this)
+        if (isFinishing() || (updateDialog != null && updateDialog.isShowing())) return;
+        updateDialog = new AlertDialog.Builder(this)
             .setTitle("Echo " + version + " is available")
             .setMessage((notes == null || notes.isEmpty() ? "" : notes + "\n\n") + "You have " + VERSION + ". Your sign-ins are kept.")
             .setPositiveButton("Install", (d, w) -> install(version, url))
@@ -174,9 +348,17 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    private long lastCheck = 0;
+    private AlertDialog updateDialog;
+
     @Override
     protected void onResume() {
         super.onResume();
+        /* 0.4: a refused update is offered again when you come back to Echo, at most every 30 minutes. */
+        if (SystemClock.elapsedRealtime() - lastCheck > 30 * 60 * 1000L && (updateDialog == null || !updateDialog.isShowing())) {
+            lastCheck = SystemClock.elapsedRealtime();
+            checkUpdate();
+        }
         if (pendingApk != null && (Build.VERSION.SDK_INT < 26 || getPackageManager().canRequestPackageInstalls())) {
             String u = pendingApk, v = pendingVersion;
             pendingApk = null;
@@ -261,7 +443,7 @@ public class MainActivity extends Activity {
                     JSONArray apps = new JSONArray();
                     for (String[] a : APPS) if (getPackageManager().getLaunchIntentForPackage(a[1]) != null) apps.put(new JSONObject().put("id", a[0]).put("name", a[2]));
                     JSONArray cmds = new JSONArray();
-                    for (String c : new String[] { "hello", "openApp", "openUrl", "copy", "web.open", "web.text", "web.tree", "web.run", "web.click", "web.select", "web.type", "web.show", "web.hide" }) cmds.put(c);
+                    for (String c : new String[] { "hello", "openApp", "openUrl", "copy", "web.open", "web.text", "web.tree", "web.run", "web.click", "web.select", "web.type", "web.show", "web.hide", "voice.voices", "voice.say", "voice.stop", "voice.listen", "voice.stopListen" }) cmds.put(c);
                     reply(r, out.put("app", VERSION).put("apps", apps).put("cmds", cmds));
                     return;
                 }
@@ -346,6 +528,11 @@ public class MainActivity extends Activity {
                         v -> reply(r, "true".equals(v) ? res(fid, true) : put(res(fid, false), "err", "no_field_focused")));
                     return;
                 }
+                case "voice.voices": voiceList(id, r); return;
+                case "voice.say": say(id, in, r); return;
+                case "voice.stop": if (speech != null) speech.stop(); reply(r, out); return;
+                case "voice.listen": listen(id, in, r); return;
+                case "voice.stopListen": if (recognizer != null) recognizer.stopListening(); reply(r, out); return;
                 case "web.show": showWeb(true); reply(r, out); return;
                 case "web.hide": showWeb(false); reply(r, out); return;
                 default: reply(r, res(id, false).put("err", "unknown_cmd"));
@@ -416,5 +603,15 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         CookieManager.getInstance().flush();
+        if (speech != null) speech.stop();
+        if (recognizer != null) recognizer.cancel();
+        finishListen(false, "paused", null);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (speech != null) speech.shutdown();
+        if (recognizer != null) recognizer.destroy();
+        super.onDestroy();
     }
 }
