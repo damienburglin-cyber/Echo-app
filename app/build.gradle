@@ -6,21 +6,27 @@ android {
         applicationId 'fr.echo.app'
         minSdk 24
         targetSdk 34
-        versionCode 8
-        versionName '0.4.1'
+        versionCode 9
+        versionName '0.5.0'
     }
     signingConfigs {
-        // Fixed debug key, committed on purpose: every build is signed with the same key,
-        // so a new version installs over the old one and keeps the sign-ins (claude.ai, GlobalExam).
-        // Standard public debug passwords: this key protects nothing secret.
-        debug {
-            storeFile rootProject.file('echo-debug.keystore')
-            storePassword 'android'
-            keyAlias 'androiddebugkey'
-            keyPassword 'android'
+        // 0.5: a private release key. It is never in this repo: GitHub Actions gets it from the repo's
+        // secrets (ECHO_KEYSTORE_B64, ECHO_KEYSTORE_PASSWORD) and writes it to $ECHO_KEYSTORE for the build.
+        release {
+            storeFile file(System.getenv('ECHO_KEYSTORE') ?: 'no-release-key.p12')
+            storeType 'pkcs12'
+            storePassword System.getenv('ECHO_KEYSTORE_PASSWORD')
+            keyAlias 'echo'
+            keyPassword System.getenv('ECHO_KEYSTORE_PASSWORD')
         }
     }
-    buildTypes { debug { signingConfig signingConfigs.debug } }
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+        }
+    }
+    lint { checkReleaseBuilds false }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17

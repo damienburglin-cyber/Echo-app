@@ -3,6 +3,9 @@
 The newest version comes first. The release workflow copies the section of the
 version it publishes into the release notes, which the app shows in its update dialog.
 
+## 0.5.0
+Safer app: now a release build signed with Echo's own private key, instead of the public debug key that made Google Play Protect warn about it. One-time step: this version cannot install over the old one. Uninstall Echo first (long press on the icon, then Uninstall), then install this version from the Echo-app releases page. You will sign in again once to Claude, GlobalExam and Netflix. After that, updates install as before.
+
 ## 0.4.1
 New icon: Echo the robot, redrawn softer and simpler on sky blue, with a matching themed icon. On Android 12 and later, the launch screen shows it and Echo hops once and blinks.
 

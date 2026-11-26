@@ -24,11 +24,13 @@ EchoV2 repo.
 matching section of `CHANGELOG.md`. To release: bump `versionCode` and `versionName`,
 add a `CHANGELOG.md` section, push.
 
-Signing: a fixed debug key, `echo-debug.keystore`, with the standard public debug
-passwords. It is committed on purpose so every build has the same signature and a new
-version installs over the old one without losing the sign-ins. It protects nothing secret.
-Known limit: anyone could sign an APK with it, but the app only installs updates from this
-repo's releases.
+Signing (since 0.5.0): a release build signed with a private key. The key is not in this
+repo: the workflow reads it from the repo secrets `ECHO_KEYSTORE_B64` (the PKCS12 file in
+base64) and `ECHO_KEYSTORE_PASSWORD`, alias `echo`. Every release has the same signature, so a
+new version installs over the old one without losing the sign-ins. Keep a backup of the key:
+without it, a new version can only be installed after uninstalling the app.
+Before 0.5.0 the app was a debug build signed with a public debug key, which Google Play
+Protect flags; going from 0.4.x to 0.5.0 needs one uninstall.
 
 ## Bridge
 

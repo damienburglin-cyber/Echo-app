@@ -20,8 +20,16 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
-      - run: gradle assembleDebug --no-daemon
-      - run: cp app/build/outputs/apk/debug/app-debug.apk "echo-${{ steps.v.outputs.version }}.apk"
+      - name: Build the release APK, signed with the private key from the repo secrets
+        env:
+          ECHO_KEYSTORE_B64: ${{ secrets.ECHO_KEYSTORE_B64 }}
+          ECHO_KEYSTORE_PASSWORD: ${{ secrets.ECHO_KEYSTORE_PASSWORD }}
+        run: |
+          export ECHO_KEYSTORE="$RUNNER_TEMP/echo-release.p12"
+          echo "$ECHO_KEYSTORE_B64" | base64 -d > "$ECHO_KEYSTORE"
+          gradle assembleRelease --no-daemon
+          rm -f "$ECHO_KEYSTORE"
+      - run: cp app/build/outputs/apk/release/app-release.apk "echo-${{ steps.v.outputs.version }}.apk"
       - uses: actions/upload-artifact@v4
         with:
           name: echo-app-apk
