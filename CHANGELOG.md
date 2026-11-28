@@ -3,6 +3,9 @@
 The newest version comes first. The release workflow copies the section of the
 version it publishes into the release notes, which the app shows in its update dialog.
 
+## 0.6.0
+More natural voices: Echo now picks the most natural voice of the phone for each language (the engine's quality mark, and Google's online voices while you are online) instead of the first offline voice, which was often the oldest and most robotic one. Echo can also show every voice of the phone so you choose the one you prefer. If a voice you chose needs the internet and you are offline, the best offline voice reads instead.
+
 ## 0.5.0
 Safer app: now a release build signed with Echo's own private key, instead of the public debug key that made Google Play Protect warn about it. One-time step: this version cannot install over the old one. Uninstall Echo first (long press on the icon, then Uninstall), then install this version from the Echo-app releases page. You will sign in again once to Claude, GlobalExam and Netflix. After that, updates install as before.
 

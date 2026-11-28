@@ -9,6 +9,9 @@ import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.speech.tts.Voice;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Locale;
@@ -152,22 +155,53 @@ public class MainActivity extends Activity {
         reply(r, o);
     }
 
-    private static int voiceScore(Voice v, Locale want) {
-        return (v.getLocale().getCountry().equals(want.getCountry()) ? 2 : 0) + (v.isNetworkConnectionRequired() ? 0 : 1);
+    /* 0.6: the most natural voice first. Up to 0.5 the offline voice won, and among equal scores the first one listed,
+       often the engine's old default voice ("xx-XX-language"): the most robotic of the list. Now: same country, then the
+       engine's quality mark, then the online voices (Google's server voices, more natural) while the phone is online;
+       the old default voice comes last. Echo can also name the exact voice Damien chose (voice.say "voice"). */
+    private boolean online() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            Network n = cm == null ? null : cm.getActiveNetwork();
+            NetworkCapabilities c = n == null ? null : cm.getNetworkCapabilities(n);
+            return c != null && c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && c.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+        } catch (Exception e) { return false; }
     }
 
-    /* The best installed voice for a language: same country and offline first. */
+    private static boolean legacy(Voice v) {
+        return v.getName().endsWith("-language") || (v.getFeatures() != null && v.getFeatures().contains("legacySetLanguageVoice"));
+    }
+
+    private static boolean installed(Voice v) {
+        return v.getFeatures() == null || !v.getFeatures().contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED);
+    }
+
+    private static int voiceScore(Voice v, Locale want, boolean net) {
+        int s = v.getLocale().getCountry().equals(want.getCountry()) ? 1000 : 0;
+        s += v.getQuality();
+        if (v.isNetworkConnectionRequired()) s += net ? 100 : -2000;
+        if (legacy(v)) s -= 300;
+        return s;
+    }
+
+    /* The best installed voice for a language (see above). */
     private Voice voiceFor(String tag) {
         Locale want = Locale.forLanguageTag(tag);
+        boolean net = online();
         Voice best = null;
         try {
             for (Voice v : speech.getVoices()) {
-                if (!v.getLocale().getLanguage().equals(want.getLanguage())) continue;
-                if (v.getFeatures() != null && v.getFeatures().contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)) continue;
-                if (best == null || voiceScore(v, want) > voiceScore(best, want)) best = v;
+                if (!v.getLocale().getLanguage().equals(want.getLanguage()) || !installed(v)) continue;
+                if (best == null || voiceScore(v, want, net) > voiceScore(best, want, net)) best = v;
             }
         } catch (Exception ignored) { }
         return best;
+    }
+
+    private Voice voiceNamed(String name) {
+        if (name == null || name.isEmpty()) return null;
+        try { for (Voice v : speech.getVoices()) if (v.getName().equals(name) && installed(v)) return v; } catch (Exception ignored) { }
+        return null;
     }
 
     private void voiceList(String id, JavaScriptReplyProxy r) {
@@ -177,6 +211,25 @@ public class MainActivity extends Activity {
             JSONObject o = res(id, speechReady);
             put(o, "voices", list);
             put(o, "listen", SpeechRecognizer.isRecognitionAvailable(this));
+            /* 0.6: every installed voice of these languages, so Echo can offer a choice and play each one */
+            JSONArray all = new JSONArray();
+            boolean net = online();
+            if (speechReady) try {
+                for (Voice v : speech.getVoices()) {
+                    if (!installed(v)) continue;
+                    boolean keep = false;
+                    for (String a : ACCENTS) if (v.getLocale().getLanguage().equals(Locale.forLanguageTag(a).getLanguage())) keep = true;
+                    if (!keep) continue;
+                    JSONObject x = new JSONObject();
+                    put(x, "name", v.getName()); put(x, "lang", v.getLocale().toLanguageTag()); put(x, "q", v.getQuality());
+                    put(x, "net", v.isNetworkConnectionRequired()); put(x, "legacy", legacy(v));
+                    all.put(x);
+                    if (all.length() >= 150) break;
+                }
+            } catch (Exception ignored) { }
+            put(o, "all", all);
+            put(o, "online", net);
+            if (speechReady) { Voice b = voiceFor("en-GB"); if (b != null) put(o, "best", b.getName()); }
             reply(r, o);
         });
     }
@@ -187,7 +240,9 @@ public class MainActivity extends Activity {
         final float rate = (float) Math.max(0.6, Math.min(1.4, in.optDouble("rate", 1.0)));
         withSpeech(() -> {
             if (!speechReady) { reply(r, put(res(id, false), "err", "no_speech_engine")); return; }
-            Voice v = voiceFor(lang);
+            Voice v = voiceNamed(in.optString("voice", ""));
+            if (v != null && v.isNetworkConnectionRequired() && !online()) v = null;
+            if (v == null) v = voiceFor(lang);
             if (v == null) v = voiceFor("en-GB");
             if (v != null) speech.setVoice(v); else speech.setLanguage(Locale.UK);
             speech.setSpeechRate(rate);
