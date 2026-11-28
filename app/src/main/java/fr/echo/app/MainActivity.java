@@ -9,6 +9,13 @@ import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.speech.tts.Voice;
+import android.content.SharedPreferences;
+import android.media.AudioAttributes;
+import android.media.MediaPlayer;
+import android.text.InputType;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
@@ -125,6 +132,12 @@ public class MainActivity extends Activity {
     private final ArrayList<Runnable> speechWaiting = new ArrayList<>();
     private final Map<String, JavaScriptReplyProxy> sayReplies = new HashMap<>();
     private SpeechRecognizer recognizer;
+    /* 0.7 Azure voices: the player of the current line, and a counter that drops answers arriving too late */
+    private MediaPlayer player;
+    private String playingId;
+    private int sayGen = 0;
+    private String azureVoicesCache;
+    private final Map<String, String> sayNotes = new HashMap<>();
     private JavaScriptReplyProxy listenReply;
     private String listenId, listenLang;
     private static final int MIC = 9;
@@ -149,9 +162,11 @@ public class MainActivity extends Activity {
 
     private void sayDone(String u, boolean ok, String err) {
         JavaScriptReplyProxy r = sayReplies.remove(u);
+        String src = sayNotes.remove(u);
         if (r == null) return;
         JSONObject o = res(u, ok);
         if (err != null) put(o, ok ? "note" : "err", err);
+        if (src != null) put(o, "src", src);
         reply(r, o);
     }
 
@@ -230,17 +245,137 @@ public class MainActivity extends Activity {
             put(o, "all", all);
             put(o, "online", net);
             if (speechReady) { Voice b = voiceFor("en-GB"); if (b != null) put(o, "best", b.getName()); }
-            reply(r, o);
+            /* 0.7: Azure voices when Damien has set his key (the key itself never leaves the app) */
+            final String key = azureKey(), region = azureRegion();
+            put(o, "azureOn", !key.isEmpty());
+            if (key.isEmpty()) { reply(r, o); return; }
+            new Thread(() -> {
+                try { String v = azureVoicesCache != null ? azureVoicesCache : AzureTts.voices(region, key); azureVoicesCache = v; put(o, "azure", v); }
+                catch (AzureTts.Fail f) { put(o, "azureErr", f.code); }
+                ui.post(() -> reply(r, o));
+            }).start();
         });
     }
 
     private void say(String id, JSONObject in, JavaScriptReplyProxy r) {
         final String text = in.optString("text");
         final String lang = in.optString("lang", "en-GB");
+        final String voice = in.optString("voice", "");
         final float rate = (float) Math.max(0.6, Math.min(1.4, in.optDouble("rate", 1.0)));
+        for (String u : new ArrayList<>(sayReplies.keySet())) sayDone(u, true, "replaced");
+        stopPlayer();
+        if (speech != null) speech.stop();
+        final int gen = ++sayGen;
+        final String key = azureKey();
+        if (voice.startsWith("azure:") && !key.isEmpty()) {
+            /* 0.7: the Azure voice; if Azure fails (offline, quota, key), the phone's voice says it at once */
+            sayReplies.put(id, r);
+            final String name = voice.substring(6), region = azureRegion();
+            new Thread(() -> {
+                try {
+                    byte[] mp3 = AzureTts.synth(region, key, name, text, rate);
+                    ui.post(() -> { if (gen == sayGen && sayReplies.containsKey(id)) play(id, mp3, () -> fallback(id, text, lang, rate, r, "play_failed")); });
+                } catch (AzureTts.Fail f) {
+                    ui.post(() -> { if (gen == sayGen && sayReplies.containsKey(id)) fallback(id, text, lang, rate, r, f.code); });
+                }
+            }).start();
+            return;
+        }
+        sayPhone(id, text, lang, rate, voice, r, voice.startsWith("azure:") ? "phone:no_key" : "phone");
+    }
+
+    private void fallback(String id, String text, String lang, float rate, JavaScriptReplyProxy r, String why) {
+        sayReplies.remove(id); sayNotes.remove(id);
+        sayPhone(id, text, lang, rate, "", r, "phone:" + why);
+    }
+
+    private void play(String id, byte[] mp3, Runnable onFail) {
+        try {
+            File f = new File(getCacheDir(), "say.mp3");
+            try (FileOutputStream o = new FileOutputStream(f)) { o.write(mp3); }
+            MediaPlayer p = new MediaPlayer();
+            player = p; playingId = id;
+            p.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());
+            p.setDataSource(f.getAbsolutePath());
+            p.setOnCompletionListener(m -> { if (player == m) { player = null; playingId = null; } m.release(); sayNotes.put(id, "azure"); sayDone(id, true, null); });
+            p.setOnErrorListener((m, what, extra) -> { if (player == m) { player = null; playingId = null; } m.release(); onFail.run(); return true; });
+            p.prepare();
+            p.start();
+        } catch (Exception e) {
+            if (player != null) { try { player.release(); } catch (Exception ignored) { } player = null; playingId = null; }
+            onFail.run();
+        }
+    }
+
+    /* Stops the Azure line being played; its answer says "stopped", like the phone's voice does. */
+    private void stopPlayer() {
+        MediaPlayer p = player; String id = playingId;
+        player = null; playingId = null;
+        if (p != null) { try { p.stop(); } catch (Exception ignored) { } p.release(); }
+        if (id != null) { sayNotes.put(id, "azure"); sayDone(id, true, "stopped"); }
+    }
+
+    private SharedPreferences prefs() { return getSharedPreferences("echo", MODE_PRIVATE); }
+    private String azureKey() { return prefs().getString("azure_key", ""); }
+    private String azureRegion() { return prefs().getString("azure_region", "westeurope"); }
+
+    /* 0.7: Damien types his Azure key here, in the app. Echo (the web page) never sees it: it only learns
+       whether a key is set. The key is checked with Azure (voice list, free) before it is kept. */
+    private void azureSetup(String id, JavaScriptReplyProxy r) {
+        final boolean[] done = { false };
+        final Runnable answer = () -> { if (done[0]) return; done[0] = true; reply(r, put(res(id, true), "azureOn", !azureKey().isEmpty())); };
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(56, 24, 56, 0);
+        TextView hint = new TextView(this);
+        hint.setText("From your Azure Speech resource (free tier F0), page Keys and Endpoint. The key stays on this phone; Echo never sees it.");
+        EditText region = new EditText(this);
+        region.setHint("Region, for example westeurope");
+        region.setSingleLine(true);
+        region.setText(azureRegion());
+        EditText key = new EditText(this);
+        key.setHint(azureKey().isEmpty() ? "Key 1" : "Key saved. Type a new one to replace it");
+        key.setSingleLine(true);
+        key.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        box.addView(hint); box.addView(region); box.addView(key);
+        AlertDialog d = new AlertDialog.Builder(this)
+            .setTitle("Natural voices (Azure)")
+            .setView(box)
+            .setPositiveButton("Save", null)
+            .setNegativeButton("Cancel", (x, w) -> answer.run())
+            .setNeutralButton("Remove the key", (x, w) -> { prefs().edit().remove("azure_key").apply(); azureVoicesCache = null; answer.run(); })
+            .setOnCancelListener(x -> answer.run())
+            .create();
+        d.setOnShowListener(x -> d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            final String rg = region.getText().toString().trim().toLowerCase(Locale.ROOT).replace(" ", "");
+            final String k = key.getText().toString().trim().isEmpty() ? azureKey() : key.getText().toString().trim();
+            if (!AzureTts.validRegion(rg)) { Toast.makeText(this, "Check the region (for example westeurope)", Toast.LENGTH_LONG).show(); return; }
+            if (k.isEmpty()) { Toast.makeText(this, "Paste your key first", Toast.LENGTH_LONG).show(); return; }
+            Toast.makeText(this, "Checking with Azure…", Toast.LENGTH_SHORT).show();
+            new Thread(() -> {
+                String err = null, list = null;
+                try { list = AzureTts.voices(rg, k); } catch (AzureTts.Fail f) { err = f.code; }
+                final String e = err, l = list;
+                ui.post(() -> {
+                    if (e != null) {
+                        Toast.makeText(this, "bad_key".equals(e) ? "Azure refused this key or region" : "Azure didn't answer (" + e + "). Try again", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    prefs().edit().putString("azure_key", k).putString("azure_region", rg).apply();
+                    azureVoicesCache = l;
+                    Toast.makeText(this, "Natural voices are on", Toast.LENGTH_SHORT).show();
+                    d.dismiss();
+                    answer.run();
+                });
+            }).start();
+        }));
+        d.show();
+    }
+
+    private void sayPhone(String id, String text, String lang, float rate, String voice, JavaScriptReplyProxy r, String src) {
         withSpeech(() -> {
             if (!speechReady) { reply(r, put(res(id, false), "err", "no_speech_engine")); return; }
-            Voice v = voiceNamed(in.optString("voice", ""));
+            Voice v = voiceNamed(voice);
             if (v != null && v.isNetworkConnectionRequired() && !online()) v = null;
             if (v == null) v = voiceFor(lang);
             if (v == null) v = voiceFor("en-GB");
@@ -248,6 +383,7 @@ public class MainActivity extends Activity {
             speech.setSpeechRate(rate);
             for (String u : new ArrayList<>(sayReplies.keySet())) sayDone(u, true, "replaced");
             sayReplies.put(id, r);
+            if (src != null) sayNotes.put(id, src);
             if (speech.speak(text, TextToSpeech.QUEUE_FLUSH, new Bundle(), id) != TextToSpeech.SUCCESS) sayDone(id, false, "speak_failed");
         });
     }
@@ -256,7 +392,9 @@ public class MainActivity extends Activity {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) { reply(r, put(res(id, false), "err", "unavailable")); return; }
         finishListen(false, "replaced", null);
         listenReply = r; listenId = id; listenLang = in.optString("lang", "en-US");
+        sayGen++; stopPlayer();
         if (speech != null) speech.stop();
+        for (String u : new ArrayList<>(sayReplies.keySet())) sayDone(u, true, "stopped");
         if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, MIC);
             return;
@@ -498,7 +636,7 @@ public class MainActivity extends Activity {
                     JSONArray apps = new JSONArray();
                     for (String[] a : APPS) if (getPackageManager().getLaunchIntentForPackage(a[1]) != null) apps.put(new JSONObject().put("id", a[0]).put("name", a[2]));
                     JSONArray cmds = new JSONArray();
-                    for (String c : new String[] { "hello", "openApp", "openUrl", "copy", "web.open", "web.text", "web.tree", "web.run", "web.click", "web.select", "web.type", "web.show", "web.hide", "voice.voices", "voice.say", "voice.stop", "voice.listen", "voice.stopListen" }) cmds.put(c);
+                    for (String c : new String[] { "hello", "openApp", "openUrl", "copy", "web.open", "web.text", "web.tree", "web.run", "web.click", "web.select", "web.type", "web.show", "web.hide", "voice.voices", "voice.say", "voice.stop", "voice.listen", "voice.stopListen", "voice.azureSetup" }) cmds.put(c);
                     reply(r, out.put("app", VERSION).put("apps", apps).put("cmds", cmds));
                     return;
                 }
@@ -585,7 +723,13 @@ public class MainActivity extends Activity {
                 }
                 case "voice.voices": voiceList(id, r); return;
                 case "voice.say": say(id, in, r); return;
-                case "voice.stop": if (speech != null) speech.stop(); reply(r, out); return;
+                case "voice.stop": {
+                    sayGen++; stopPlayer();
+                    if (speech != null) speech.stop();
+                    for (String u : new ArrayList<>(sayReplies.keySet())) sayDone(u, true, "stopped");
+                    reply(r, out); return;
+                }
+                case "voice.azureSetup": azureSetup(id, r); return;
                 case "voice.listen": listen(id, in, r); return;
                 case "voice.stopListen": if (recognizer != null) recognizer.stopListening(); reply(r, out); return;
                 case "web.show": showWeb(true); reply(r, out); return;
@@ -658,7 +802,9 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         CookieManager.getInstance().flush();
+        sayGen++; stopPlayer();
         if (speech != null) speech.stop();
+        for (String u : new ArrayList<>(sayReplies.keySet())) sayDone(u, true, "stopped");
         if (recognizer != null) recognizer.cancel();
         finishListen(false, "paused", null);
     }
