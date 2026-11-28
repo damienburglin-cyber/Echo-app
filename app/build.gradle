@@ -6,8 +6,8 @@ android {
         applicationId 'fr.echo.app'
         minSdk 24
         targetSdk 34
-        versionCode 10
-        versionName '0.6.0'
+        versionCode 11
+        versionName '0.7.0'
     }
     signingConfigs {
         // 0.5: a private release key. It is never in this repo: GitHub Actions gets it from the repo's

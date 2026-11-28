@@ -3,6 +3,9 @@
 The newest version comes first. The release workflow copies the section of the
 version it publishes into the release notes, which the app shows in its update dialog.
 
+## 0.7.0
+Natural voices: the same human-sounding voices as Microsoft Edge's "Read aloud", through your own free Azure Speech key. In Echo, Voice options › Set up natural voices opens a box where you paste the key; it is checked with Azure and kept on this phone only (Echo never sees it). If Azure doesn't answer (no internet, monthly quota used up), the phone's voice says the line at once.
+
 ## 0.6.0
 More natural voices: Echo now picks the most natural voice of the phone for each language (the engine's quality mark, and Google's online voices while you are online) instead of the first offline voice, which was often the oldest and most robotic one. Echo can also show every voice of the phone so you choose the one you prefer. If a voice you chose needs the internet and you are offline, the best offline voice reads instead.
 
